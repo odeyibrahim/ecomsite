@@ -32,7 +32,9 @@ export const handler = async (event) => {
         const adminToken = event.headers['x-admin-token'];
         const { operation, data } = requestBody;
 
-        // LOGIN - always succeeds for now
+        console.log('=== OPERATION ===', operation);
+
+        // LOGIN
         if (operation === 'login') {
             try {
                 const token = crypto.randomBytes(32).toString('hex');
@@ -52,6 +54,7 @@ export const handler = async (event) => {
                     body: JSON.stringify({ success: true, token: token })
                 };
             } catch (dbError) {
+                console.error('Login DB error:', dbError);
                 return {
                     statusCode: 200,
                     headers,
@@ -60,14 +63,17 @@ export const handler = async (event) => {
             }
         }
 
-        // GET STATS - real database query
+        // GET STATS
         if (operation === 'get_stats') {
+            console.log('Fetching stats...');
             const [ordersCount, revenue, productsCount, customersCount] = await Promise.all([
                 supabase.from('orders').select('*', { count: 'exact', head: true }),
                 supabase.from('orders').select('total_amount').eq('payment_status', 'success'),
                 supabase.from('products').select('*', { count: 'exact', head: true }),
                 supabase.from('customers').select('*', { count: 'exact', head: true })
             ]);
+            
+            console.log('Products count:', productsCount.count);
             
             const totalRevenue = revenue.data?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
             
@@ -83,12 +89,29 @@ export const handler = async (event) => {
             };
         }
 
-        // GET PRODUCTS - real database query
+        // GET PRODUCTS - with debug logging
         if (operation === 'get_products') {
-            const { data: products } = await supabase
+            console.log('Fetching products from Supabase...');
+            console.log('Supabase URL:', process.env.VITE_SUPABASE_URL ? 'Set' : 'Missing');
+            
+            const { data: products, error: productsError } = await supabase
                 .from('products')
                 .select('*')
                 .order('created_at', { ascending: false });
+            
+            if (productsError) {
+                console.error('Products error:', productsError);
+                return {
+                    statusCode: 500,
+                    headers,
+                    body: JSON.stringify({ error: productsError.message })
+                };
+            }
+            
+            console.log('Products found:', products?.length || 0);
+            if (products?.length > 0) {
+                console.log('First product:', products[0].title);
+            }
             
             return {
                 statusCode: 200,
@@ -97,8 +120,9 @@ export const handler = async (event) => {
             };
         }
 
-        // CREATE PRODUCT - real database insert
+        // CREATE PRODUCT
         if (operation === 'create_product') {
+            console.log('Creating product:', data.title);
             const productId = 'prod_' + Date.now();
             const { data: newProduct, error: createError } = await supabase
                 .from('products')
@@ -126,6 +150,7 @@ export const handler = async (event) => {
                 };
             }
             
+            console.log('Product created:', newProduct.title);
             return {
                 statusCode: 200,
                 headers,
@@ -133,7 +158,7 @@ export const handler = async (event) => {
             };
         }
 
-        // UPDATE PRODUCT - real database update
+        // UPDATE PRODUCT
         if (operation === 'update_product') {
             const { data: updatedProduct, error: updateError } = await supabase
                 .from('products')
@@ -167,7 +192,7 @@ export const handler = async (event) => {
             };
         }
 
-        // DELETE PRODUCT - real database delete
+        // DELETE PRODUCT
         if (operation === 'delete_product') {
             await supabase
                 .from('products')
@@ -181,7 +206,7 @@ export const handler = async (event) => {
             };
         }
 
-        // GET ORDERS - real database query
+        // GET ORDERS
         if (operation === 'get_orders') {
             const { data: orders } = await supabase
                 .from('orders')
@@ -195,7 +220,7 @@ export const handler = async (event) => {
             };
         }
 
-        // UPDATE ORDER STATUS - real database update
+        // UPDATE ORDER STATUS
         if (operation === 'update_order_status') {
             await supabase
                 .from('orders')
@@ -209,7 +234,7 @@ export const handler = async (event) => {
             };
         }
 
-        // GET CUSTOMERS - real database query
+        // GET CUSTOMERS
         if (operation === 'get_customers') {
             const { data: customers } = await supabase
                 .from('customers')
@@ -223,7 +248,7 @@ export const handler = async (event) => {
             };
         }
 
-        // GET RECENT ORDERS - real database query
+        // GET RECENT ORDERS
         if (operation === 'get_recent_orders') {
             const { data: recent } = await supabase
                 .from('orders')
