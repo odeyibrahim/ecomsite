@@ -32,17 +32,37 @@ export const handler = async (event) => {
         const adminToken = event.headers['x-admin-token'];
         const { operation, data } = requestBody;
 
-        // LOGIN - always succeeds, creates token
+        console.log('=== DEBUG ===');
+        console.log('Operation:', operation);
+        console.log('Has token:', !!adminToken);
+        if (adminToken) console.log('Token first 20 chars:', adminToken.substring(0, 20));
+
+        // LOGIN - always succeeds
         if (operation === 'login') {
             const token = crypto.randomBytes(32).toString('hex');
             const expiresAt = new Date();
             expiresAt.setHours(expiresAt.getHours() + 24);
             
-            // Store the session
-            await supabase.from('admin_sessions').insert({
-                token: token,
-                expires_at: expiresAt.toISOString()
-            });
+            console.log('Creating token:', token.substring(0, 20));
+            
+            const { data: insertData, error: insertError } = await supabase
+                .from('admin_sessions')
+                .insert({
+                    token: token,
+                    expires_at: expiresAt.toISOString()
+                })
+                .select();
+            
+            if (insertError) {
+                console.error('Insert error:', insertError);
+                return {
+                    statusCode: 500,
+                    headers,
+                    body: JSON.stringify({ error: 'Failed to create session: ' + insertError.message })
+                };
+            }
+            
+            console.log('Insert successful, session created');
             
             return {
                 statusCode: 200,
@@ -60,21 +80,40 @@ export const handler = async (event) => {
             };
         }
 
-        // Check if token is valid
+        // Check if token exists in database
+        console.log('Looking for token in database...');
         const { data: session, error: sessionError } = await supabase
             .from('admin_sessions')
             .select('*')
             .eq('token', adminToken)
-            .gt('expires_at', new Date().toISOString())
             .single();
 
-        if (sessionError || !session) {
+        if (sessionError) {
+            console.log('Session query error:', sessionError);
+        }
+        
+        if (!session) {
+            console.log('No session found for token');
             return {
                 statusCode: 401,
                 headers,
                 body: JSON.stringify({ error: 'Invalid or expired token' })
             };
         }
+
+        console.log('Session found, expires:', session.expires_at);
+        console.log('Current time:', new Date().toISOString());
+
+        if (new Date(session.expires_at) < new Date()) {
+            console.log('Token expired');
+            return {
+                statusCode: 401,
+                headers,
+                body: JSON.stringify({ error: 'Token expired' })
+            };
+        }
+
+        console.log('Token valid, processing operation:', operation);
 
         let result;
 
