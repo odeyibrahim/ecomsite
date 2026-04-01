@@ -32,49 +32,53 @@ export const handler = async (event) => {
         const adminToken = event.headers['x-admin-token'];
         const { operation, data } = requestBody;
 
-        if (operation !== 'login') {
-            if (!adminToken) {
-                return {
-                    statusCode: 401,
-                    headers,
-                    body: JSON.stringify({ error: 'Admin authentication required' })
-                };
-            }
+        // For login, always succeed
+        if (operation === 'login') {
+            console.log('DEBUG MODE: Login accepted');
+            const token = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date();
+            expiresAt.setHours(expiresAt.getHours() + 24);
+            
+            // Store session in database
+            await supabase.from('admin_sessions').insert({
+                token: token,
+                expires_at: expiresAt.toISOString()
+            });
+            
+            return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify({ success: true, token: token })
+            };
+        }
 
-            const { data: session } = await supabase
-                .from('admin_sessions')
-                .select('*')
-                .eq('token', adminToken)
-                .gt('expires_at', new Date().toISOString())
-                .single();
+        // For all other operations, verify token
+        if (!adminToken) {
+            return {
+                statusCode: 401,
+                headers,
+                body: JSON.stringify({ error: 'Admin authentication required' })
+            };
+        }
 
-            if (!session) {
-                return {
-                    statusCode: 401,
-                    headers,
-                    body: JSON.stringify({ error: 'Invalid or expired admin session' })
-                };
-            }
+        const { data: session, error: sessionError } = await supabase
+            .from('admin_sessions')
+            .select('*')
+            .eq('token', adminToken)
+            .gt('expires_at', new Date().toISOString())
+            .single();
+
+        if (sessionError || !session) {
+            return {
+                statusCode: 401,
+                headers,
+                body: JSON.stringify({ error: 'Invalid or expired admin session' })
+            };
         }
 
         let result;
 
         switch (operation) {
-            case 'login':
-                // DEBUG: ACCEPT ANY PASSWORD - REMOVE AFTER TESTING
-                console.log('DEBUG MODE: Accepting any password');
-                const token = crypto.randomBytes(32).toString('hex');
-                const expiresAt = new Date();
-                expiresAt.setHours(expiresAt.getHours() + 24);
-                
-                await supabase.from('admin_sessions').insert({
-                    token: token,
-                    expires_at: expiresAt.toISOString()
-                });
-                
-                result = { success: true, token: token };
-                break;
-
             case 'get_stats':
                 const [ordersCount, revenue, productsCount, customersCount] = await Promise.all([
                     supabase.from('orders').select('*', { count: 'exact', head: true }),
