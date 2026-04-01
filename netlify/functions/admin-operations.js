@@ -32,14 +32,13 @@ export const handler = async (event) => {
         const adminToken = event.headers['x-admin-token'];
         const { operation, data } = requestBody;
 
-        // For login, always succeed
+        // LOGIN - always succeeds, creates token
         if (operation === 'login') {
-            console.log('DEBUG MODE: Login accepted');
             const token = crypto.randomBytes(32).toString('hex');
             const expiresAt = new Date();
             expiresAt.setHours(expiresAt.getHours() + 24);
             
-            // Store session in database
+            // Store the session
             await supabase.from('admin_sessions').insert({
                 token: token,
                 expires_at: expiresAt.toISOString()
@@ -52,15 +51,16 @@ export const handler = async (event) => {
             };
         }
 
-        // For all other operations, verify token
+        // All other operations - verify token
         if (!adminToken) {
             return {
                 statusCode: 401,
                 headers,
-                body: JSON.stringify({ error: 'Admin authentication required' })
+                body: JSON.stringify({ error: 'No token provided' })
             };
         }
 
+        // Check if token is valid
         const { data: session, error: sessionError } = await supabase
             .from('admin_sessions')
             .select('*')
@@ -72,7 +72,7 @@ export const handler = async (event) => {
             return {
                 statusCode: 401,
                 headers,
-                body: JSON.stringify({ error: 'Invalid or expired admin session' })
+                body: JSON.stringify({ error: 'Invalid or expired token' })
             };
         }
 
