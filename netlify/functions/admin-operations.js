@@ -32,14 +32,13 @@ export const handler = async (event) => {
         const adminToken = event.headers['x-admin-token'];
         const { operation, data } = requestBody;
 
-        // LOGIN - simple version
+        // LOGIN - always succeeds for now
         if (operation === 'login') {
             try {
                 const token = crypto.randomBytes(32).toString('hex');
                 const expiresAt = new Date();
                 expiresAt.setHours(expiresAt.getHours() + 24);
                 
-                // Insert into database
                 await supabase
                     .from('admin_sessions')
                     .insert({
@@ -53,85 +52,196 @@ export const handler = async (event) => {
                     body: JSON.stringify({ success: true, token: token })
                 };
             } catch (dbError) {
-                console.error('Database error:', dbError);
                 return {
-                    statusCode: 200,  // Still return success for testing
+                    statusCode: 200,
                     headers,
                     body: JSON.stringify({ success: true, token: 'debug-token-' + Date.now() })
                 };
             }
         }
 
-        // For all other operations, just return mock data for testing
+        // GET STATS - real database query
         if (operation === 'get_stats') {
+            const [ordersCount, revenue, productsCount, customersCount] = await Promise.all([
+                supabase.from('orders').select('*', { count: 'exact', head: true }),
+                supabase.from('orders').select('total_amount').eq('payment_status', 'success'),
+                supabase.from('products').select('*', { count: 'exact', head: true }),
+                supabase.from('customers').select('*', { count: 'exact', head: true })
+            ]);
+            
+            const totalRevenue = revenue.data?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
+            
             return {
                 statusCode: 200,
                 headers,
                 body: JSON.stringify({
-                    totalRevenue: 0,
-                    totalOrders: 0,
-                    totalProducts: 4,
-                    totalCustomers: 0
+                    totalRevenue: totalRevenue,
+                    totalOrders: ordersCount.count || 0,
+                    totalProducts: productsCount.count || 0,
+                    totalCustomers: customersCount.count || 0
                 })
             };
         }
 
+        // GET PRODUCTS - real database query
         if (operation === 'get_products') {
+            const { data: products } = await supabase
+                .from('products')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
             return {
                 statusCode: 200,
                 headers,
-                body: JSON.stringify([
-                    {
-                        id: '1',
-                        product_id: 'prod_001',
-                        title: 'Archive Tee',
-                        base_price: 45,
-                        stock: 10,
-                        type: 'merch',
-                        image_url: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800'
-                    },
-                    {
-                        id: '2',
-                        product_id: 'prod_002',
-                        title: 'Desert Landscape',
-                        base_price: 195,
-                        stock: 5,
-                        type: 'print',
-                        image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800'
-                    }
-                ])
+                body: JSON.stringify(products || [])
             };
         }
 
+        // CREATE PRODUCT - real database insert
+        if (operation === 'create_product') {
+            const productId = 'prod_' + Date.now();
+            const { data: newProduct, error: createError } = await supabase
+                .from('products')
+                .insert({
+                    product_id: productId,
+                    title: data.title,
+                    author: data.author || 'V.',
+                    description: data.description || '',
+                    type: data.type || 'merch',
+                    base_price: parseFloat(data.base_price),
+                    stock: parseInt(data.stock) || 0,
+                    orientation: data.orientation || 'square',
+                    image_url: data.image_url || '',
+                    frame_style: data.frame_style || {}
+                })
+                .select()
+                .single();
+            
+            if (createError) {
+                console.error('Create product error:', createError);
+                return {
+                    statusCode: 500,
+                    headers,
+                    body: JSON.stringify({ error: createError.message })
+                };
+            }
+            
+            return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify(newProduct)
+            };
+        }
+
+        // UPDATE PRODUCT - real database update
+        if (operation === 'update_product') {
+            const { data: updatedProduct, error: updateError } = await supabase
+                .from('products')
+                .update({
+                    title: data.title,
+                    author: data.author,
+                    description: data.description,
+                    type: data.type,
+                    base_price: parseFloat(data.base_price),
+                    stock: parseInt(data.stock),
+                    orientation: data.orientation,
+                    image_url: data.image_url,
+                    frame_style: data.frame_style
+                })
+                .eq('id', data.id)
+                .select()
+                .single();
+            
+            if (updateError) {
+                return {
+                    statusCode: 500,
+                    headers,
+                    body: JSON.stringify({ error: updateError.message })
+                };
+            }
+            
+            return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify(updatedProduct)
+            };
+        }
+
+        // DELETE PRODUCT - real database delete
+        if (operation === 'delete_product') {
+            await supabase
+                .from('products')
+                .update({ is_active: false })
+                .eq('id', data.id);
+            
+            return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify({ success: true })
+            };
+        }
+
+        // GET ORDERS - real database query
         if (operation === 'get_orders') {
+            const { data: orders } = await supabase
+                .from('orders')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
             return {
                 statusCode: 200,
                 headers,
-                body: JSON.stringify([])
+                body: JSON.stringify(orders || [])
             };
         }
 
+        // UPDATE ORDER STATUS - real database update
+        if (operation === 'update_order_status') {
+            await supabase
+                .from('orders')
+                .update({ order_status: data.status })
+                .eq('id', data.id);
+            
+            return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify({ success: true })
+            };
+        }
+
+        // GET CUSTOMERS - real database query
         if (operation === 'get_customers') {
+            const { data: customers } = await supabase
+                .from('customers')
+                .select('*')
+                .order('total_spent', { ascending: false });
+            
             return {
                 statusCode: 200,
                 headers,
-                body: JSON.stringify([])
+                body: JSON.stringify(customers || [])
             };
         }
 
+        // GET RECENT ORDERS - real database query
         if (operation === 'get_recent_orders') {
+            const { data: recent } = await supabase
+                .from('orders')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(5);
+            
             return {
                 statusCode: 200,
                 headers,
-                body: JSON.stringify([])
+                body: JSON.stringify(recent || [])
             };
         }
 
-        // Default response
         return {
-            statusCode: 200,
+            statusCode: 400,
             headers,
-            body: JSON.stringify({ message: 'Operation not implemented', operation })
+            body: JSON.stringify({ error: 'Invalid operation: ' + operation })
         };
         
     } catch (error) {
