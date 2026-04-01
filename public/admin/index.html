@@ -50,6 +50,7 @@
         }
         button:hover { background: #333; }
         .error { color: #c62828; margin-bottom: 15px; font-size: 12px; display: none; }
+        .debug { margin-top: 20px; font-size: 10px; color: #888; text-align: left; border-top: 1px solid #eee; padding-top: 15px; display: none; }
         .footer { margin-top: 20px; font-size: 11px; color: #888; }
         .footer a { color: #888; text-decoration: none; }
         .footer a:hover { color: #000; }
@@ -60,38 +61,81 @@
         <div class="logo">V.</div>
         <h1>Admin Login</h1>
         <div id="error" class="error"></div>
-        <input type="password" id="password" placeholder="Enter password" autofocus>
+        <input type="password" id="password" placeholder="Enter any password" autofocus>
         <button onclick="login()">Login</button>
         <div class="footer"><a href="/">Return to Gallery</a></div>
+        <div id="debug" class="debug"></div>
     </div>
     <script>
         async function login() {
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('error');
-            if (!password) { errorDiv.textContent = 'Please enter password'; errorDiv.style.display = 'block'; return; }
+            const debugDiv = document.getElementById('debug');
+            
+            debugDiv.style.display = 'block';
+            debugDiv.innerHTML = 'Attempting login...';
+            
+            if (!password) {
+                errorDiv.textContent = 'Please enter password';
+                errorDiv.style.display = 'block';
+                debugDiv.innerHTML += '<br>❌ No password entered';
+                return;
+            }
+            
             errorDiv.style.display = 'none';
+            
             try {
+                debugDiv.innerHTML += '<br>📡 Sending request to /.netlify/functions/admin-operations';
+                
                 const response = await fetch('/.netlify/functions/admin-operations', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ operation: 'login', data: { password } })
                 });
+                
+                debugDiv.innerHTML += `<br>📥 Response status: ${response.status}`;
+                
                 const result = await response.json();
-                if (result.success) {
+                debugDiv.innerHTML += `<br>📦 Response body: ${JSON.stringify(result)}`;
+                
+                if (result.success && result.token) {
+                    debugDiv.innerHTML += `<br>✅ Token received: ${result.token.substring(0, 20)}...`;
+                    
                     localStorage.setItem('admin_token', result.token);
+                    debugDiv.innerHTML += `<br>💾 Token saved to localStorage`;
+                    
+                    const savedToken = localStorage.getItem('admin_token');
+                    debugDiv.innerHTML += `<br>🔍 Verified token exists: ${savedToken ? 'YES' : 'NO'}`;
+                    
+                    debugDiv.innerHTML += `<br>🚪 Redirecting to dashboard...`;
                     window.location.href = '/admin/dashboard.html';
                 } else {
-                    errorDiv.textContent = 'Invalid password';
+                    errorDiv.textContent = result.error || 'Login failed';
                     errorDiv.style.display = 'block';
-                    document.getElementById('password').value = '';
-                    document.getElementById('password').focus();
+                    debugDiv.innerHTML += `<br>❌ Login failed: ${result.error || 'No token returned'}`;
                 }
             } catch (err) {
-                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.textContent = 'Login failed. Check console.';
                 errorDiv.style.display = 'block';
+                debugDiv.innerHTML += `<br>❌ Error: ${err.message}`;
+                console.error('Login error:', err);
             }
         }
-        document.getElementById('password').addEventListener('keypress', (e) => { if (e.key === 'Enter') login(); });
-        if (localStorage.getItem('admin_token')) window.location.href = '/admin/dashboard.html';
+        
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+        
+        // Show current token on page load
+        const existingToken = localStorage.getItem('admin_token');
+        const debugDiv = document.getElementById('debug');
+        if (existingToken) {
+            debugDiv.style.display = 'block';
+            debugDiv.innerHTML = `🔑 Existing token found: ${existingToken.substring(0, 20)}...<br>Will redirect to dashboard if valid.`;
+            setTimeout(() => {
+                window.location.href = '/admin/dashboard.html';
+            }, 2000);
+        }
     </script>
 </body>
 </html>
