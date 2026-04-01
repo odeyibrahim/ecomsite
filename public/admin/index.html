@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - V. Gallery</title>
+    <link href="https://fonts.googleapis.com/css2?family=Copperplate&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Copperplate', 'Copperplate Gothic Light', serif;
+            background: linear-gradient(135deg, #f8f8f8 0%, #e8e8e8 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .logo { font-size: 32px; margin-bottom: 20px; }
+        h1 { font-size: 20px; font-weight: 400; margin-bottom: 30px; letter-spacing: 2px; }
+        input {
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        input:focus { outline: none; border-color: #000; }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #000;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        button:hover { background: #333; }
+        .error { color: #c62828; margin-bottom: 15px; font-size: 12px; display: none; }
+        .footer { margin-top: 20px; font-size: 11px; color: #888; }
+        .footer a { color: #888; text-decoration: none; }
+        .footer a:hover { color: #000; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">V.</div>
+        <h1>Admin Login</h1>
+        <div id="error" class="error"></div>
+        <input type="password" id="password" placeholder="Enter password" autofocus>
+        <button onclick="login()">Login</button>
+        <div class="footer"><a href="/">Return to Gallery</a></div>
+    </div>
+    <script>
+        async function login() {
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            if (!password) { errorDiv.textContent = 'Please enter password'; errorDiv.style.display = 'block'; return; }
+            errorDiv.style.display = 'none';
+            try {
+                const response = await fetch('/.netlify/functions/admin-operations', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ operation: 'login', data: { password } })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    localStorage.setItem('admin_token', result.token);
+                    window.location.href = '/admin/dashboard.html';
+                } else {
+                    errorDiv.textContent = 'Invalid password';
+                    errorDiv.style.display = 'block';
+                    document.getElementById('password').value = '';
+                    document.getElementById('password').focus();
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+        document.getElementById('password').addEventListener('keypress', (e) => { if (e.key === 'Enter') login(); });
+        if (localStorage.getItem('admin_token')) window.location.href = '/admin/dashboard.html';
+    </script>
+</body>
+</html>
