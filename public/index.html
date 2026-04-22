@@ -2,13 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>V. Gallery · shop + originals</title>
-    <link href="https://fonts.googleapis.com/css2?family=Copperplate&display=swap" rel="stylesheet">
+    
+    <link href="https://fonts.cdnfonts.com/css/copperplate" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --color-primary: #000;
+            --color-light: #f8f8f8;
+            --color-gray: #888;
+            --color-gray-dark: #555;
+            --nav-height: 60px;
+            --color-success: #2e7d32;
+            --color-error: #c62828;
+        }
         body {
-            font-family: 'Copperplate', 'Copperplate Gothic Light', serif;
+            font-family: 'Copperplate', serif;
             background: #fff;
             color: #333;
             overflow: hidden;
@@ -195,8 +209,8 @@
         <div class="share-container">
             <img id="shareImage" class="share-image">
             <div class="share-actions" style="display:flex; gap:10px; justify-content:center;">
-                <button class="share-btn" id="downloadShareBtn" style="background:#000;color:#fff;border:none;padding:8px 16px;">Download</button>
-                <button class="share-btn" id="closeShareBtn" style="background:#000;color:#fff;border:none;padding:8px 16px;">Close</button>
+                <button id="downloadShareBtn" style="background:#000;color:#fff;border:none;padding:8px 16px;">Download</button>
+                <button id="closeShareBtn" style="background:#000;color:#fff;border:none;padding:8px 16px;">Close</button>
             </div>
         </div>
     </div>
@@ -249,9 +263,9 @@
                 <button class="filter-btn" data-filter="merch">Merch</button>
                 <button class="filter-btn" data-filter="craft">Craft</button>
                 <button class="filter-btn" data-filter="saved">♡ Saved</button>
-                <button class="eye-toggle" id="toggleDetailsBtn" style="background:none;border:none;font-size:14px;cursor:pointer;">👁</button>
+                <button id="toggleDetailsBtn" style="background:none;border:none;font-size:14px;cursor:pointer;">👁</button>
             </div>
-            <button class="close-grid-btn" id="closeGridBtn" style="background:none;border:none;font-size:20px;cursor:pointer;">←</button>
+            <button id="closeGridBtn" style="background:none;border:none;font-size:20px;cursor:pointer;">←</button>
         </div>
         <div class="grid-container" id="gridContainer"></div>
     </div>
@@ -269,21 +283,22 @@
             <div style="display:flex; justify-content:space-between;"><span>Total:</span><span id="checkoutTotal"></span></div>
         </div>
         <input type="text" id="checkoutName" placeholder="Full Name" style="width:100%; padding:10px; margin:5px 0;">
+        <div class="error-message" id="nameError" style="color:#c62828;font-size:10px;display:none;"></div>
         <input type="email" id="checkoutEmail" placeholder="Email" style="width:100%; padding:10px; margin:5px 0;">
+        <div class="error-message" id="emailError" style="color:#c62828;font-size:10px;display:none;"></div>
         <input type="text" id="checkoutAddress" placeholder="Address" style="width:100%; padding:10px; margin:5px 0;">
+        <div class="error-message" id="addressError" style="color:#c62828;font-size:10px;display:none;"></div>
         <div class="shipping-options" id="shippingOptions">
             <div class="shipping-option selected" data-shipping="standard"><span>Standard ($7)</span><input type="radio" name="shipping" value="standard" checked></div>
             <div class="shipping-option" data-shipping="express"><span>Express ($15)</span><input type="radio" name="shipping" value="express"></div>
         </div>
-       
         <div class="payment-buttons">
             <button class="paystack-btn" id="paystackBtn">Pay with Paystack</button>
             <button class="nomba-btn" id="nombaBtn">Pay with Nomba</button>
         </div>
-        <button class="close-checkout" id="closeCheckoutBtn" style="width:100%; margin-top:10px; background:none;border:1px solid #ddd;padding:10px;">Close</button>
+        <button id="closeCheckoutBtn" style="width:100%; margin-top:10px; background:none;border:1px solid #ddd;padding:10px;">Close</button>
     </div>
     
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script>
         class VGalleryApp {
             constructor() {
@@ -397,10 +412,8 @@
                     else throw new Error();
                 } catch (error) {
                     this.products = [
-                        { product_id: 'prod_001', title: 'Archive Tee', description: 'Archive Tee — a relic of soft cotton.\nScreen printed by hand in Los Angeles.', type: 'merch', base_price: 45, stock: 10, image_url: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800' },
-                        { product_id: 'prod_002', title: 'Desert Landscape', description: 'Archival photograph from the high desert.', type: 'print', base_price: 195, stock: 5, image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800', frame_style: { color: 'white', width: 5 } },
-                        { product_id: 'prod_003', title: 'Silent Currents', description: 'Original mixed media on canvas.', type: 'original', base_price: 8500, stock: 1, image_url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=800', frame_style: { color: '#2c2c2c', width: 8 } },
-                        { product_id: 'prod_004', title: 'Handwoven Wall Hanging', description: 'Natural fibers dyed with plants.', type: 'craft', base_price: 380, stock: 2, image_url: 'https://images.unsplash.com/photo-1513519245088-0e12902e35ca?w=800' }
+                        { product_id: 'prod_001', title: 'Archive Tee', description: 'Archive Tee — a relic of soft cotton.', type: 'merch', base_price: 45, stock: 10, image_url: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800' },
+                        { product_id: 'prod_002', title: 'Desert Landscape', description: 'Archival photograph from the high desert.', type: 'print', base_price: 195, stock: 5, image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800' }
                     ];
                 }
                 this.updateProductDisplay();
@@ -536,59 +549,103 @@
                 this.el.checkoutTotal.textContent = this.formatPrice(total);
             }
             
-           async processPayment(gateway) {
-    const p = this.products[this.currentIndex];
-    
-    if (!this.validateCheckoutForm()) {
-        this.showNotification('Please fill all required fields', 'error');
-        return;
-    }
-    
-    this.showLoading(true);
-    const btn = gateway === 'paystack' ? this.el.paystackBtn : this.el.nombaBtn;
-    btn.disabled = true;
-    btn.textContent = 'Processing...';
-    
-    try {
-        // Create items array for the database function
-        const items = [{
-            product_id: p.product_id,
-            quantity: this.checkoutQuantity
-        }];
-
-
-        
-        const response = await fetch('/.netlify/functions/initialize-payment', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: this.el.checkoutEmail.value.trim(),
-                name: this.el.checkoutName.value.trim(),
-                phone: this.el.checkoutPhone.value.trim(),
-                items: items,  // Send as array
-                discount_code: null,
-                shippingMethod: this.selectedShipping,
-                address: this.el.checkoutAddress.value.trim(),
-                city: this.el.checkoutCity.value.trim(),
-                zip: this.el.checkoutZip.value.trim(),
-                paymentGateway: gateway
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.authorization_url) {
-            window.location.href = data.authorization_url;
-        } else {
-            throw new Error(data.error || 'Payment initialization failed');
-        }
-    } catch (error) {
-        this.showNotification(error.message || 'Payment failed', 'error');
-        this.showLoading(false);
-        btn.disabled = false;
-        btn.textContent = gateway === 'paystack' ? 'Pay with Paystack' : 'Pay with Nomba';
-    }
-}
+            // VALIDATION METHOD - THIS WAS MISSING
+            validateCheckoutForm() {
+                let isValid = true;
+                
+                const name = this.el.checkoutName.value.trim();
+                if (!name) {
+                    document.getElementById('nameError').textContent = 'Name required';
+                    document.getElementById('nameError').style.display = 'block';
+                    this.el.checkoutName.classList.add('error');
+                    isValid = false;
+                } else {
+                    document.getElementById('nameError').style.display = 'none';
+                    this.el.checkoutName.classList.remove('error');
+                }
+                
+                const email = this.el.checkoutEmail.value.trim();
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    document.getElementById('emailError').textContent = 'Valid email required';
+                    document.getElementById('emailError').style.display = 'block';
+                    this.el.checkoutEmail.classList.add('error');
+                    isValid = false;
+                } else {
+                    document.getElementById('emailError').style.display = 'none';
+                    this.el.checkoutEmail.classList.remove('error');
+                }
+                
+                const address = this.el.checkoutAddress.value.trim();
+                if (!address) {
+                    document.getElementById('addressError').textContent = 'Address required';
+                    document.getElementById('addressError').style.display = 'block';
+                    this.el.checkoutAddress.classList.add('error');
+                    isValid = false;
+                } else {
+                    document.getElementById('addressError').style.display = 'none';
+                    this.el.checkoutAddress.classList.remove('error');
+                }
+                
+                return isValid;
+            }
+            
+            // PROCESS PAYMENT METHOD - UPDATED
+            async processPayment(gateway) {
+                const p = this.products[this.currentIndex];
+                
+                if (!this.validateCheckoutForm()) {
+                    this.showNotification('Please fill all required fields', 'error');
+                    return;
+                }
+                
+                if (p.stock < this.checkoutQuantity) {
+                    this.showNotification('Insufficient stock', 'error');
+                    return;
+                }
+                
+                this.showLoading(true);
+                const btn = gateway === 'paystack' ? this.el.paystackBtn : this.el.nombaBtn;
+                btn.disabled = true;
+                btn.textContent = 'Processing...';
+                
+                try {
+                    const items = [{
+                        product_id: p.product_id,
+                        quantity: this.checkoutQuantity
+                    }];
+                    
+                    const response = await fetch('/.netlify/functions/initialize-payment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: this.el.checkoutEmail.value.trim(),
+                            name: this.el.checkoutName.value.trim(),
+                            phone: '',
+                            items: items,
+                            discount_code: null,
+                            shippingMethod: this.selectedShipping,
+                            address: this.el.checkoutAddress.value.trim(),
+                            city: '',
+                            zip: '',
+                            paymentGateway: gateway
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.authorization_url) {
+                        window.location.href = data.authorization_url;
+                    } else {
+                        throw new Error(data.error || 'Payment initialization failed');
+                    }
+                } catch (error) {
+                    this.showNotification(error.message || 'Payment failed', 'error');
+                    this.showLoading(false);
+                    btn.disabled = false;
+                    btn.textContent = gateway === 'paystack' ? 'Pay with Paystack' : 'Pay with Nomba';
+                }
+            }
             
             showIntro() { this.el.introOverlay.classList.remove('hidden'); this.el.splitContainer.classList.remove('active'); }
             enterGallery() { this.el.introOverlay.classList.add('hidden'); setTimeout(() => this.el.splitContainer.classList.add('active'), 300); }
