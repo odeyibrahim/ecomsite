@@ -589,12 +589,63 @@
                 
                 return isValid;
             }
+
+            validateCheckoutForm() {
+    let isValid = true;
+    
+    const name = this.el.checkoutName.value.trim();
+    if (!name) {
+        document.getElementById('nameError').textContent = 'Name required';
+        document.getElementById('nameError').style.display = 'block';
+        this.el.checkoutName.classList.add('error');
+        isValid = false;
+    } else {
+        document.getElementById('nameError').style.display = 'none';
+        this.el.checkoutName.classList.remove('error');
+    }
+    
+    const email = this.el.checkoutEmail.value.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        document.getElementById('emailError').textContent = 'Valid email required';
+        document.getElementById('emailError').style.display = 'block';
+        this.el.checkoutEmail.classList.add('error');
+        isValid = false;
+    } else {
+        document.getElementById('emailError').style.display = 'none';
+        this.el.checkoutEmail.classList.remove('error');
+    }
+    
+    const address = this.el.checkoutAddress.value.trim();
+    if (!address) {
+        document.getElementById('addressError').textContent = 'Address required';
+        document.getElementById('addressError').style.display = 'block';
+        this.el.checkoutAddress.classList.add('error');
+        isValid = false;
+    } else {
+        document.getElementById('addressError').style.display = 'none';
+        this.el.checkoutAddress.classList.remove('error');
+    }
+    
+    return isValid;
+}
             
-            async processPayment(gateway) {
+          async processPayment(gateway) {
     const p = this.products[this.currentIndex];
     
-    if (!this.validateCheckoutForm()) {
-        this.showNotification('Please fill all required fields', 'error');
+    // Get form values
+    const name = this.el.checkoutName.value.trim();
+    const email = this.el.checkoutEmail.value.trim();
+    const address = this.el.checkoutAddress.value.trim();
+    
+    // Simple validation
+    if (!name || !email || !address) {
+        this.showNotification('Please fill all fields', 'error');
+        return;
+    }
+    
+    if (!email.includes('@')) {
+        this.showNotification('Please enter a valid email', 'error');
         return;
     }
     
@@ -616,13 +667,14 @@
         const tax = isArt ? 0 : subtotal * 0.08;
         const total = subtotal + shipping + tax;
         
+        console.log('Sending payment request for:', total);
+        
         const response = await fetch('/.netlify/functions/initialize-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                email: this.el.checkoutEmail.value.trim(),
-                name: this.el.checkoutName.value.trim(),
-                phone: this.el.checkoutPhone.value.trim() || '',
+                email: email,
+                name: name,
                 amount: total,
                 productId: p.product_id,
                 quantity: this.checkoutQuantity,
@@ -631,9 +683,9 @@
         });
         
         const data = await response.json();
+        console.log('Payment response:', data);
         
         if (data.authorization_url) {
-            // Redirect to Paystack checkout page
             window.location.href = data.authorization_url;
         } else {
             throw new Error(data.error || 'Payment initialization failed');
