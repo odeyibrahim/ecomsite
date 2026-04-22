@@ -30,8 +30,22 @@ export const handler = async (event) => {
 
         console.log('Payment request body:', JSON.stringify(requestBody));
 
-        const { email, name, phone, productId, quantity, shippingMethod, address, city, zip, paymentGateway } = requestBody;
+        // In initialize-payment.js, extract items directly from request
+const { email, name, phone, items, discount_code, shippingMethod, address, city, zip, paymentGateway } = requestBody;
 
+// Then pass items directly to the database function
+const { data: orderData, error: orderError } = await supabase
+    .rpc('create_pending_order', {
+        p_customer_email: email,
+        p_customer_name: name,
+        p_customer_phone: phone || '',
+        p_items: items,  // Already a JSON array
+        p_discount_code: discount_code || null,
+        p_shipping_method: shippingMethod || 'standard',
+        p_customer_address: { street: address || '', city: city || '', zip: zip || '' }
+    });
+
+        
         // Validate required fields
         if (!email || !name || !productId || !quantity) {
             console.error('Missing fields:', { email: !!email, name: !!name, productId: !!productId, quantity: !!quantity });
