@@ -17,19 +17,7 @@ export const handler = async (event) => {
         const { email, name, amount, productId, quantity, paymentGateway } = body;
         
         console.log('Request:', { email, name, amount, productId, quantity, paymentGateway });
-
-        // Hardcode NGN for testing
-const currency = 'NGN';
-const amountInKobo = Math.round(total * 100 * 1500); // Convert USD to NGN (1500 rate)
-
-// In the Paystack API call:
-body: JSON.stringify({
-    email: email,
-    amount: amountInKobo,
-    currency: 'NGN',  // Force NGN
-    reference: reference,
-    // ...
-})
+        
         
         // Validate required fields
         if (!email || !name || !amount || !productId) {
