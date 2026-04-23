@@ -14,24 +14,39 @@ exports.handler = async (event, context) => {
     return { statusCode: 204, headers };
   }
 
-  // Use service role key for backend operations (bypasses RLS)
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Use service role, not anon key
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
 
-  console.log('Environment check:', {
-    supabaseUrl: supabaseUrl ? 'Set' : 'Missing',
-    supabaseServiceKey: supabaseServiceKey ? 'Set' : 'Missing',
-    paystackSecret: paystackSecret ? 'Set' : 'Missing'
+  // Validate URL format
+  console.log('Supabase URL:', supabaseUrl);
+  console.log('URL format check:', {
+    hasHttps: supabaseUrl?.startsWith('https://'),
+    hasSupabaseCo: supabaseUrl?.includes('.supabase.co'),
+    length: supabaseUrl?.length
   });
 
   if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('Missing configuration');
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
         error: 'Configuration error',
-        message: 'Payment system not properly configured'
+        message: 'Missing Supabase configuration. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Netlify environment variables.'
+      })
+    };
+  }
+
+  // Validate URL format
+  if (!supabaseUrl.startsWith('https://') || !supabaseUrl.includes('.supabase.co')) {
+    console.error('Invalid Supabase URL format:', supabaseUrl);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ 
+        error: 'Invalid Supabase URL',
+        message: 'SUPABASE_URL must be in format: https://your-project.supabase.co'
       })
     };
   }
@@ -41,7 +56,8 @@ exports.handler = async (event, context) => {
     const { email, name, amount, productId, quantity = 1, items = [] } = body;
     
     console.log('=== PAYMENT INITIALIZATION ===');
-    console.log('Request:', { email, name, amount, productId, quantity });
+    console.log('Email:', email);
+    console.log('Amount:', amount);
     
     if (!email) {
       return {
@@ -59,15 +75,42 @@ exports.handler = async (event, context) => {
       };
     }
     
-    // Create Supabase client with SERVICE ROLE key (bypasses RLS)
+    // Create Supabase client with explicit options
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'netlify-function'
+        }
       }
     });
     
-    // Format items array
+    // Test connection first
+    console.log('Testing Supabase connection...');
+    const { error: testError } = await supabase
+      .from('orders')
+      .select('count')
+      .limit(1);
+    
+    if (testError) {
+      console.error('Supabase connection test failed:', testError);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Database connection failed',
+          message: 'Cannot connect to Supabase. Please check your SUPABASE_URL and network configuration.',
+          details: testError.message
+        })
+      };
+    }
+    
+    console.log('✅ Supabase connection successful');
+    
+    // Format items
     let itemsArray = [];
     if (Array.isArray(items) && items.length > 0) {
       itemsArray = items;
@@ -78,9 +121,9 @@ exports.handler = async (event, context) => {
       }];
     }
     
-    console.log('Items to save:', JSON.stringify(itemsArray));
+    console.log('Items:', JSON.stringify(itemsArray));
     
-    // Create the order - service role bypasses RLS
+    // Insert order
     const orderData = {
       email: email,
       customer_name: name || email.split('@')[0],
@@ -91,29 +134,31 @@ exports.handler = async (event, context) => {
       created_at: new Date().toISOString()
     };
     
-    console.log('Inserting order with service role...');
+    console.log('Inserting order...');
     
     const { data: result, error: insertError } = await supabase
       .from('orders')
       .insert(orderData)
-      .select();
+      .select('id')
+      .single();
     
     if (insertError) {
-      console.error('Insert error details:', insertError);
+      console.error('Insert error:', insertError);
       throw new Error(`Database insert failed: ${insertError.message}`);
     }
     
-    const orderId = result && result[0] ? result[0].id : null;
-    console.log('✅ Order created successfully:', orderId);
+    console.log('✅ Order created:', result.id);
     
-    // Process Paystack payment
+    // Process Paystack
     if (paystackSecret) {
+      console.log('Initializing Paystack payment...');
+      
       const paystackPayload = JSON.stringify({
         email: email,
         amount: Math.round(parseFloat(amount) * 100),
         currency: 'GHS',
         metadata: {
-          order_id: orderId,
+          order_id: result.id,
           customer_email: email
         }
       });
@@ -125,7 +170,8 @@ exports.handler = async (event, context) => {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${paystackSecret}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(paystackPayload)
         }
       };
       
@@ -155,7 +201,7 @@ exports.handler = async (event, context) => {
             success: true,
             authorization_url: paystackResponse.data.authorization_url,
             reference: paystackResponse.data.reference,
-            order_id: orderId
+            order_id: result.id
           })
         };
       } else {
@@ -165,7 +211,7 @@ exports.handler = async (event, context) => {
           headers,
           body: JSON.stringify({
             success: true,
-            order_id: orderId,
+            order_id: result.id,
             message: 'Order created but payment initialization failed',
             payment_error: paystackResponse.message
           })
@@ -173,25 +219,27 @@ exports.handler = async (event, context) => {
       }
     }
     
-    // Success without Paystack
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         success: true,
-        order_id: orderId,
+        order_id: result.id,
         message: 'Order created successfully'
       })
     };
     
   } catch (error) {
     console.error('Fatal error:', error);
+    console.error('Error stack:', error.stack);
+    
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
         error: 'Internal server error',
-        message: error.message
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       })
     };
   }
