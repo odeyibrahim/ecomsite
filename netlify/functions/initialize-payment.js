@@ -14,17 +14,18 @@ exports.handler = async (event, context) => {
     return { statusCode: 204, headers };
   }
 
+  // Use service role key for backend operations (bypasses RLS)
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_ANON_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Use service role, not anon key
   const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
 
   console.log('Environment check:', {
     supabaseUrl: supabaseUrl ? 'Set' : 'Missing',
-    supabaseKey: supabaseKey ? 'Set' : 'Missing',
+    supabaseServiceKey: supabaseServiceKey ? 'Set' : 'Missing',
     paystackSecret: paystackSecret ? 'Set' : 'Missing'
   });
 
-  if (!supabaseUrl || !supabaseKey) {
+  if (!supabaseUrl || !supabaseServiceKey) {
     return {
       statusCode: 500,
       headers,
@@ -42,7 +43,6 @@ exports.handler = async (event, context) => {
     console.log('=== PAYMENT INITIALIZATION ===');
     console.log('Request:', { email, name, amount, productId, quantity });
     
-    // Validate required fields
     if (!email) {
       return {
         statusCode: 400,
@@ -59,7 +59,13 @@ exports.handler = async (event, context) => {
       };
     }
     
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Create Supabase client with SERVICE ROLE key (bypasses RLS)
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
     
     // Format items array
     let itemsArray = [];
@@ -74,25 +80,7 @@ exports.handler = async (event, context) => {
     
     console.log('Items to save:', JSON.stringify(itemsArray));
     
-    // First, check if orders table exists and has correct structure
-    const { data: tableCheck, error: tableError } = await supabase
-      .from('orders')
-      .select('id')
-      .limit(1);
-    
-    if (tableError && tableError.message.includes('does not exist')) {
-      console.error('Orders table does not exist!');
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ 
-          error: 'Database setup incomplete',
-          message: 'Orders table not found. Please run the database setup script.'
-        })
-      };
-    }
-    
-    // Create the order
+    // Create the order - service role bypasses RLS
     const orderData = {
       email: email,
       customer_name: name || email.split('@')[0],
@@ -103,7 +91,7 @@ exports.handler = async (event, context) => {
       created_at: new Date().toISOString()
     };
     
-    console.log('Inserting order:', orderData);
+    console.log('Inserting order with service role...');
     
     const { data: result, error: insertError } = await supabase
       .from('orders')
@@ -112,27 +100,13 @@ exports.handler = async (event, context) => {
     
     if (insertError) {
       console.error('Insert error details:', insertError);
-      
-      // Check if it's a column error
-      if (insertError.message.includes('column')) {
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ 
-            error: 'Database schema mismatch',
-            message: insertError.message,
-            hint: 'Please run the database setup SQL to create the correct table structure'
-          })
-        };
-      }
-      
       throw new Error(`Database insert failed: ${insertError.message}`);
     }
     
     const orderId = result && result[0] ? result[0].id : null;
     console.log('✅ Order created successfully:', orderId);
     
-    // Process Paystack payment (optional)
+    // Process Paystack payment
     if (paystackSecret) {
       const paystackPayload = JSON.stringify({
         email: email,
@@ -217,8 +191,7 @@ exports.handler = async (event, context) => {
       headers,
       body: JSON.stringify({ 
         error: 'Internal server error',
-        message: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        message: error.message
       })
     };
   }
