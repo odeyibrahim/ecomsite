@@ -16,19 +16,8 @@ export const handler = async (event) => {
         const body = JSON.parse(event.body || '{}');
         const { email, name, amount, productId, quantity, paymentGateway } = body;
         
-        console.log('Request:', { email, name, amount, productId, quantity, paymentGateway });
+        console.log('Request:', { email, name, amount, productId, quantity });
         
-        
-        // Validate required fields
-        if (!email || !name || !amount || !productId) {
-            return {
-                statusCode: 400,
-                headers,
-                body: JSON.stringify({ error: 'Missing required fields' })
-            };
-        }
-        
-        // Get Supabase client
         const supabase = createClient(
             process.env.VITE_SUPABASE_URL,
             process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -41,16 +30,16 @@ export const handler = async (event) => {
             .eq('product_id', productId)
             .single();
         
-        if (productError || !product) {
-            console.error('Product not found:', productId);
+        if (productError) {
+            console.error('Product error:', productError);
             return {
                 statusCode: 404,
                 headers,
-                body: JSON.stringify({ error: 'Product not found' })
+                body: JSON.stringify({ error: 'Product not found: ' + productId })
             };
         }
         
-        console.log('Product found:', product.title, 'Price:', product.base_price);
+        console.log('Product found:', product.title);
         
         // Calculate amounts
         const subtotal = product.base_price * quantity;
@@ -59,11 +48,14 @@ export const handler = async (event) => {
         const tax = isArt ? 0 : subtotal * 0.08;
         const total = subtotal + shipping + tax;
         
-        console.log('Total amount:', total);
+        console.log('Total calculated:', total);
         
-        // Create order in database
+        // Create items array for the order
         const items = [{ product_id: productId, quantity: quantity }];
+        console.log('Items:', JSON.stringify(items));
         
+        // Call the create_pending_order function
+        console.log('Calling create_pending_order...');
         const { data: orderData, error: orderError } = await supabase
             .rpc('create_pending_order', {
                 p_customer_email: email,
@@ -75,29 +67,35 @@ export const handler = async (event) => {
                 p_customer_address: { street: '', city: '', zip: '' }
             });
         
-        if (orderError || !orderData?.success) {
-            console.error('Order creation error:', orderError, orderData);
-            // Continue anyway for testing
-        }
-        
-        const reference = orderData?.order_number || 'VG-' + Date.now();
-        const amountInKobo = Math.round(total * 100);
-        
-        // Get Paystack key
-        const paystackKey = process.env.PAYSTACK_SECRET_KEY;
-        
-        if (!paystackKey) {
-            console.error('PAYSTACK_SECRET_KEY not configured');
+        if (orderError) {
+            console.error('Order RPC error:', orderError);
             return {
                 statusCode: 500,
                 headers,
-                body: JSON.stringify({ error: 'Payment gateway not configured' })
+                body: JSON.stringify({ error: 'Order creation failed: ' + orderError.message })
             };
         }
         
-        console.log('Calling Paystack API...');
+        console.log('Order RPC response:', JSON.stringify(orderData));
         
-        // Initialize Paystack transaction
+        if (!orderData || !orderData.success) {
+            console.error('Order creation failed:', orderData?.error);
+            return {
+                statusCode: 500,
+                headers,
+                body: JSON.stringify({ error: orderData?.error || 'Order creation failed' })
+            };
+        }
+        
+        console.log('Order created successfully! Order ID:', orderData.order_number);
+        
+        // Initialize Paystack
+        const paystackKey = process.env.PAYSTACK_SECRET_KEY;
+        const reference = orderData.order_number;
+        const amountInKobo = Math.round(total * 100);
+        
+        console.log('Calling Paystack with reference:', reference);
+        
         const paystackResponse = await fetch('https://api.paystack.co/transaction/initialize', {
             method: 'POST',
             headers: {
@@ -110,45 +108,39 @@ export const handler = async (event) => {
                 reference: reference,
                 callback_url: 'https://strong-ganache-65cc18.netlify.app/checkout-success.html',
                 metadata: {
-                    customer_name: name,
-                    product_id: productId,
-                    quantity: quantity,
-                    order_id: orderData?.order_id
+                    order_id: orderData.order_id,
+                    product_title: product.title
                 }
             })
         });
         
         const paystackData = await paystackResponse.json();
-        console.log('Paystack response:', paystackData.status ? 'Success' : 'Failed', paystackData.message);
+        console.log('Paystack response:', paystackData.status ? 'Success' : 'Failed');
         
-        if (paystackData.status) {
-            // Update order with payment reference
-            if (orderData?.order_id) {
-                await supabase
-                    .from('orders')
-                    .update({ payment_reference: paystackData.data.reference })
-                    .eq('id', orderData.order_id);
-            }
-            
+        if (!paystackData.status) {
+            console.error('Paystack error:', paystackData.message);
             return {
-                statusCode: 200,
+                statusCode: 500,
                 headers,
-                body: JSON.stringify({
-                    authorization_url: paystackData.data.authorization_url,
-                    reference: paystackData.data.reference,
-                    order_number: reference
-                })
-            };
-        } else {
-            return {
-                statusCode: 400,
-                headers,
-                body: JSON.stringify({ 
-                    error: paystackData.message || 'Payment initialization failed',
-                    details: paystackData
-                })
+                body: JSON.stringify({ error: paystackData.message })
             };
         }
+        
+        // Update order with payment reference
+        await supabase
+            .from('orders')
+            .update({ payment_reference: paystackData.data.reference })
+            .eq('id', orderData.order_id);
+        
+        return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+                authorization_url: paystackData.data.authorization_url,
+                reference: paystackData.data.reference,
+                order_number: reference
+            })
+        };
         
     } catch (error) {
         console.error('Fatal error:', error);
